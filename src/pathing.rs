@@ -9,9 +9,9 @@ use std::thread::current;
 
 pub mod spatial;
 
-pub trait PathFinder<ID : PartialEq, W : Num> {
+pub trait PathFinder<ID : PartialEq + Clone, W : Num> {
 
-    fn find_path(&self, from: &ID, to: &ID) -> Option<(Vec<&ID>, W)>;
+    fn find_path(&self, from: &ID, to: &ID) -> Option<(Vec<ID>, W)>;
 }
 
 pub trait WeightRepr<W> where
@@ -19,13 +19,20 @@ W : PartialOrd + Add + Sub {
     fn into_weight(&self) -> W;
 }
 
-impl WeightRepr<isize> for () {
-    fn into_weight(&self) -> isize {
+impl WeightRepr<usize> for () {
+    fn into_weight(&self) -> usize {
         1
     }
 }
 
 pub struct StatelessPathFinder<ID : Eq, W, T, G : Graph<ID=ID,Weight=W,Value=T>>(G);
+
+impl<ID: Eq, W, T, G: Graph<ID=ID, Weight=W, Value=T>> StatelessPathFinder<ID, W, T, G> {
+
+    pub fn new(graph: G) -> Self {
+        Self(graph)
+    }
+}
 
 /*
 impl<ID: Eq, W: PartialOrd + Add + Sub , T, G: Graph<ID=ID, Weight=W, Value=T>> PathFinder<ID, W> for StatelessPathFinder<ID, W, T, G> {
@@ -93,12 +100,12 @@ impl<'a, 'b, ID : Eq, W : PartialOrd> Eq for IdWrapper<'a, ID, W> {
 }
 
 
-impl<ID: Eq, WI : Num + PartialOrd + Add + Sub + Clone, W : WeightRepr<WI>, T, G: Graph<ID=ID, Weight=W, Value=T>> PathFinder<ID, WI> for StatelessPathFinder<ID, W, T, G> {
-    fn find_path(&self, from: &ID, to: &ID) -> Option<(Vec<&ID>, WI)> {
+impl<ID: Eq + Clone, WI : Num + PartialOrd + Add + Sub + Clone, W : WeightRepr<WI>, T, G: Graph<ID=ID, Weight=W, Value=T>> PathFinder<ID, WI> for StatelessPathFinder<ID, W, T, G> {
+
+
+    fn find_path(&self, from: &ID, to: &ID) -> Option<(Vec<ID>, WI)> {
         let mut visited = Set::new();
         let mut prev = Map::new();
-
-
 
 
         let mut distance = Map::new();
@@ -149,21 +156,25 @@ impl<ID: Eq, WI : Num + PartialOrd + Add + Sub + Clone, W : WeightRepr<WI>, T, G
                     }.into_weight();
 
 
-                        self.0.get_weight(current, adj).unwrap().into_weight();
+                    let fixed = long_life_time_borrow[adj];
                     let new_distance: WI = path_length + current_distance.clone();
 
                      match distance.get(adj) {
                         None => {
-                            distance.insert(adj, new_distance);
+                            distance.insert(adj, new_distance.clone());
+                            prev.insert(adj, current);
                         },
                         Some(old_distance) => {
                             if new_distance < *old_distance {
-                                *prev.entry(adj).or_insert(WI::zero()) = new_distance.clone();
-                                let fixed = long_life_time_borrow[adj];
-                                queue.push(IdWrapper(fixed, Some(new_distance)));
+                                *distance.get_mut(adj).unwrap() = new_distance.clone();
+                                *prev.get_mut(adj).unwrap() = current;
+
+
                             }
                         },
                     }
+
+                    queue.push(IdWrapper(fixed, Some(new_distance)));
 
 
                 }
@@ -172,7 +183,30 @@ impl<ID: Eq, WI : Num + PartialOrd + Add + Sub + Clone, W : WeightRepr<WI>, T, G
 
         if visited.contains(to) {
 
-            None
+            let mut output = vec![];
+            let mut total_weight: WI = WI::zero();
+            let mut ptr = Some(&to);
+
+            while ptr.is_some() {
+                let current = *ptr.unwrap();
+                output.insert(0, current.clone());
+                let prev = prev.get(current);
+
+                match prev {
+                    None => {},
+                    Some(prev) => {
+                        let weight = self.0.get_weight(prev, current).unwrap().into_weight();
+                        total_weight = total_weight + weight;
+                    },
+                }
+
+                ptr = prev;
+
+            }
+
+            // output.push(from.clone());
+
+            Some((output, total_weight))
         } else {
             None
         }

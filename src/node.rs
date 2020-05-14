@@ -69,6 +69,8 @@ impl<ID, T> Deref for Node<ID, T>
     }
 }
 
+
+
 impl<ID, T> Node<ID, T> {
     pub fn new(id: ID, val: T) -> Self {
         Node { id, value: val }

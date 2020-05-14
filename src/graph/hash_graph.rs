@@ -1,11 +1,12 @@
 use std::hash::Hash;
 use std::collections::{HashMap, HashSet};
-use crate::{Node, GraphRef, GraphReverse};
+use crate::{Node, GraphRef, GraphReverse, GraphError};
 use crate::graph::{Graph, GraphResult};
 use crate::graph::GraphError::{IdExists, IdDoesNotExist, EdgeAlreadyExists};
 use std::ops::{Index, IndexMut};
 use std::fmt::{Debug, Formatter, Display};
 use std::iter::FromIterator;
+use crate::pathing::spatial::Location;
 
 
 pub struct HashGraph<ID = usize, W = (), T = ()>
@@ -314,6 +315,30 @@ impl<'a, ID, W, T> HashGraph<ID, W, T>
         self.add_edge_with(u, v, Default::default())
     }
 }
+
+impl<'a, ID, W, T> HashGraph<ID, W, T>
+    where
+        ID: Eq + Hash + Copy,
+        T : Location<W>
+{
+    ///
+    /// If the `W` of the graph has a default value, allows for the adding of edges without a weight specified
+
+    pub fn add_edge_distance(&mut self, u: &'a ID, v: &'a ID) -> GraphResult {
+        let node1 = match self.get_node(u) {
+            None => { return Err(GraphError::IdDoesNotExist)},
+            Some(n) => {n},
+        };
+        let node2 = match self.get_node(v) {
+            None => { return Err(GraphError::IdDoesNotExist)},
+            Some(n) => {n},
+        };
+
+        let weight = node1.distance_to(node2);
+        self.add_edge_with(u, v, weight)
+    }
+}
+
 
 impl<ID, W, T> Index<ID> for HashGraph<ID, W, T>
     where
