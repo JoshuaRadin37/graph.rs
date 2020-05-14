@@ -1,6 +1,6 @@
 use std::hash::Hash;
-use std::collections::HashMap;
-use crate::{Node, GraphRef};
+use std::collections::{HashMap, HashSet};
+use crate::{Node, GraphRef, GraphReverse};
 use crate::graph::{Graph, GraphResult};
 use crate::graph::GraphError::{IdExists, IdDoesNotExist, EdgeAlreadyExists};
 use std::ops::{Index, IndexMut};
@@ -21,6 +21,7 @@ pub struct HashGraph<ID = usize, W = (), T = ()>
 
 
 
+
 impl<ID, W, T> Display for HashGraph<ID, W, T> where
     ID: Eq + Hash + Copy, {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -35,6 +36,18 @@ impl<ID, W, T> Debug for HashGraph<ID, W, T> where
     }
 }
 
+impl<ID, W, T> Default for HashGraph<ID, W, T>
+    where ID: Eq + Hash + Copy{
+    fn default() -> Self {
+        Self {
+            adjacency: Default::default(),
+            nodes: Default::default(),
+            edges: vec![],
+            num_nodes: 0,
+            num_edges: 0
+        }
+    }
+}
 
 
 impl<ID, W, T> Graph for HashGraph<ID, W, T>
@@ -46,15 +59,6 @@ impl<ID, W, T> Graph for HashGraph<ID, W, T>
     type Value = T;
 
 
-    fn new() -> Self {
-        HashGraph {
-            adjacency: HashMap::new(),
-            nodes: HashMap::new(),
-            edges: Vec::new(),
-            num_nodes: 0,
-            num_edges: 0,
-        }
-    }
 
 
 
@@ -67,7 +71,7 @@ impl<ID, W, T> Graph for HashGraph<ID, W, T>
         self.nodes.get_mut(id)
     }
 
-    fn add_node(&mut self, id: ID, value: T) -> GraphResult {
+    fn add_node_with(&mut self, id: ID, value: T) -> GraphResult {
         let n = Node::new(id.clone(), value);
         if self.nodes.contains_key(n.get_id()) {
             return Err(IdExists);
@@ -136,11 +140,17 @@ impl<ID, W, T> Graph for HashGraph<ID, W, T>
 
 
     fn num_nodes(&self) -> usize {
-        self.num_edges
+        self.num_nodes
     }
 
     fn num_edges(&self) -> usize {
-        self.num_nodes
+        self.num_edges
+    }
+
+    fn take_nodes(self) -> Vec<Node<Self::ID, Self::Value>> {
+        self.nodes.into_iter().map(|(_, node)|
+            node
+        ).collect()
     }
 
 
@@ -154,6 +164,8 @@ impl<ID, W, T> Graph for HashGraph<ID, W, T>
      */
 
 
+
+
 }
 
 
@@ -165,7 +177,7 @@ impl<ID, W, T> From<(Vec<(ID, T)>, Vec<(ID, ID, W)>)> for HashGraph<ID, W, T> wh
         let mut output = HashGraph::new();
 
         for (id, value) in nodes {
-            output.add_node(id, value);
+            output.add_node_with(id, value);
         }
 
         for (id1, id2, weight) in edges {
@@ -186,7 +198,7 @@ impl<ID, W, T> HashGraph<ID, W, T>
             I: Iterator<Item = ID>,
     {
         for n in id {
-            if let Err(e) = self.add_node(n, value) {
+            if let Err(e) = self.add_node_with(n, value) {
                 return Err(e);
             }
         }
@@ -204,11 +216,15 @@ impl<ID, W, T> HashGraph<ID, W, T>
             I: Iterator<Item = ID>,
     {
         for n in id {
-            if let Err(e) = self.add_node(n, T::default()) {
+            if let Err(e) = self.add_node_with(n, T::default()) {
                 return Err(e);
             }
         }
         Ok(())
+    }
+
+    pub fn add_node(&mut self, id: ID) -> GraphResult {
+        self.add_node_with(id, T::default())
     }
 }
 
@@ -226,6 +242,64 @@ impl<ID, W, T> Clone for HashGraph<ID, W, T>
             num_nodes: self.num_nodes,
             num_edges: self.num_edges,
         }
+    }
+}
+
+impl<ID, W, T> HashGraph<ID, W, T>
+    where
+        ID: Eq + Hash + Copy {
+    pub fn disassemble(mut self) -> (Vec<Node<ID, T>>, Vec<(ID, ID, W)>){
+        let adj = std::mem::replace(&mut self.adjacency, HashMap::new());
+        let edges =
+            adj.into_iter().map(
+                |(id1, map)| {
+                    map.into_iter().map(
+                        move |(id2, weight)| {
+                            (id1, id2, weight)
+                        }
+                    )
+                }
+            ).flatten().collect();
+
+        let nodes = self.take_nodes();
+
+        (nodes, edges)
+    }
+
+    pub fn as_reverse(&self) -> HashGraph<&ID, &W, &T> {
+        self.to_reference_graph().into_reverse()
+    }
+
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<ID, W, T> HashGraph<ID, W, Option<T>>
+    where
+        ID: Eq + Hash + Copy
+{
+
+
+    pub fn unwrap(mut self) -> Option<HashGraph<ID,W,T>> {
+        let mut output = HashGraph::new();
+        let (nodes, edges) = self.disassemble();
+        for node in nodes {
+            let id = *node.get_id();
+            match node.value {
+                None => { return None; },
+                Some(val) => {
+                    output.add_node_with(id, val);
+                },
+            }
+        }
+
+        for (u, v, weight) in edges {
+            output.add_edge_with(&u, &v, weight);
+        }
+
+
+        Some(output)
     }
 }
 
@@ -282,7 +356,7 @@ impl<'a, ID, W, T>  GraphRef<'a, ID, W, T, HashGraph<&'a ID, &'a W, &'a T>> for 
         {
 
             for node in self.nodes() {
-                output.add_node(
+                output.add_node_with(
                     node.get_id(),
                     node.get_value()
                 );
@@ -296,5 +370,92 @@ impl<'a, ID, W, T>  GraphRef<'a, ID, W, T, HashGraph<&'a ID, &'a W, &'a T>> for 
 
 
         output
+    }
+}
+
+fn compare_vectors_for_element_equality<T, R>(vec1: &Vec<T>, vec2: &Vec<R>) -> bool
+    where T : PartialEq<R>
+{
+    if vec1.len() != vec2.len() {
+        false
+    } else {
+        let mut vec2_copy = vec2.iter().map(|val| val).collect::<Vec<&R>>();
+
+        for vec1_value in vec1 {
+            let exists = vec2_copy.iter().enumerate().find(|(pos, vec2_val)| {
+                vec1_value == **vec2_val
+            }).map(|(pos, _)| pos);
+
+            match exists {
+                None => {},
+                Some(vec2_match) => {
+                    vec2_copy.remove(vec2_match);
+                },
+            }
+
+        }
+
+
+
+        vec2_copy.is_empty()
+    }
+}
+
+impl <ID, W, T, G, IDO, WO, TO> PartialEq<G> for HashGraph<ID,W,T>
+    where ID : Eq + Hash + Copy,
+          IDO: Eq,
+          W : PartialEq<WO>,
+          T : PartialEq<TO>,
+          G: Graph<ID=IDO, Weight=WO, Value=TO>{
+    fn eq(&self, other: &G) -> bool {
+        let this_nodes = self.nodes();
+        let other_nodes = other.nodes();
+        let mut nodes_map: HashMap<ID, IDO> = HashMap::new(); // self(ID) -> other(ID)
+
+        let this_nodes_set: Vec<&T> = this_nodes.iter().map(|n| n.get_value()).collect();
+        let other_nodes_set: Vec<&TO> = other_nodes.iter().map(|n| n.get_value()).collect();
+
+        if !compare_vectors_for_element_equality(&this_nodes_set, &other_nodes_set) {
+            return false;
+        }
+
+
+
+        unimplemented!()
+    }
+}
+
+
+
+
+impl<ID, W, T> GraphReverse<ID, W, T> for HashGraph<ID, W, T> where
+    ID: Eq + Hash + Copy, {
+    fn into_reverse(self) -> Self {
+        let mut output = Self::new();
+        let (nodes, edges) = self.disassemble();
+        for node in nodes {
+            output.add_node_with(*node.get_id(), node.value);
+        }
+
+        for (u, v, weight) in edges {
+            output.add_edge_with(&v, &u, weight);
+        }
+
+
+        output
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use crate::graph::hash_graph::compare_vectors_for_element_equality;
+
+    #[test]
+    fn vector_element_equality() {
+        let vec1 = vec![3, 5, 10];
+        let vec2 = vec![10, 3, 5];
+
+        assert!(compare_vectors_for_element_equality(&vec1, &vec2));
     }
 }

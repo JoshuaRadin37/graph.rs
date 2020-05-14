@@ -69,17 +69,18 @@ impl<ID, T> Deref for Node<ID, T>
     }
 }
 
-impl<ID: PartialEq + Copy, T> Node<ID, T> {
+impl<ID, T> Node<ID, T> {
     pub fn new(id: ID, val: T) -> Self {
         Node { id, value: val }
     }
 
-    pub fn is_id(&self, k: &ID) -> bool {
-        &self.id == k
-    }
 
     pub fn get_id(&self) -> &ID {
         &self.id
+    }
+
+    pub fn into_tuple(self) -> (ID, T){
+        (self.id, self.value)
     }
 
     pub fn get_value(&self) -> &T {
@@ -89,4 +90,11 @@ impl<ID: PartialEq + Copy, T> Node<ID, T> {
     pub fn get_value_mut(&mut self) -> &mut T {
         &mut self.value
     }
+}
+
+impl <ID : PartialEq, T> Node<ID, T>{
+    pub fn is_id(&self, k: &ID) -> bool {
+        &self.id == k
+    }
+
 }

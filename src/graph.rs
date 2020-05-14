@@ -12,12 +12,12 @@ mod btree_graph;
 
 
 pub trait Graph :
-    Debug + Display {
-    type ID;
+Debug + Display {
+    type ID : Eq;
     type Weight;
     type Value;
 
-    fn new() -> Self;
+
 
     fn get(&self, id: &Self::ID) -> Option<&Self::Value> {
         match self.get_node(id) {
@@ -36,7 +36,7 @@ pub trait Graph :
     fn get_node(&self, id: &Self::ID) -> Option<&Node<Self::ID, Self::Value>>;
     fn get_node_mut(&mut self, id: &Self::ID) -> Option<&mut Node<Self::ID, Self::Value>>;
 
-    fn add_node(&mut self, id: Self::ID, value: Self::Value) -> GraphResult;
+    fn add_node_with(&mut self, id: Self::ID, value: Self::Value) -> GraphResult;
     fn contains_node(&self, id: &Self::ID) -> bool;
 
 
@@ -53,13 +53,23 @@ pub trait Graph :
     fn num_nodes(&self) -> usize;
     fn num_edges(&self) -> usize;
 
+    fn take_nodes(self) -> Vec<Node<Self::ID, Self::Value>>;
 
 }
 
 pub trait GraphRef<'a, ID : 'a, W : 'a, T : 'a, G>
-where G : 'a + Graph<ID=&'a ID,Weight=&'a W,Value=&'a T>{
+    where G : 'a + Graph<ID=&'a ID,Weight=&'a W,Value=&'a T>,
+          ID: Eq {
 
     fn to_reference_graph(&'a self) -> G;
+}
+
+pub trait GraphReverse<ID, W, T, G = Self>
+    where G : Graph<ID=ID, Weight=W, Value=T> ,
+          ID: Eq {
+
+    fn into_reverse(self) -> G;
+
 }
 
 
