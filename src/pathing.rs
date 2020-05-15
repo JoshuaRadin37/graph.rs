@@ -74,13 +74,13 @@ impl<'a, 'b, ID : Eq, W : PartialOrd> PartialOrd for IdWrapper<'a, ID, W> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (&self.1, &other.1) {
             (Some(this), Some(other)) => {
-                this.partial_cmp(other)
+                other.partial_cmp(this)
             },
             (Some(_), None) => {
-                Some(Less)
+                Some(Greater)
             },
             (None, Some(_)) => {
-                Some(Greater)
+                Some(Less)
             },
             (None, None) => {
                 Some(Equal)

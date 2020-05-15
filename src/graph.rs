@@ -2,9 +2,10 @@ use std::hash::Hash;
 use std::collections::HashMap;
 use crate::Node;
 use crate::graph::GraphError::{IdExists, IdDoesNotExist, EdgeAlreadyExists};
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Add};
 use std::fmt::{Debug, Formatter, Result, Display};
 pub use crate::graph::hash_graph::HashGraph;
+use num_traits::{PrimInt, One, Zero, FromPrimitive};
 
 mod hash_graph;
 mod btree_graph;
@@ -37,6 +38,8 @@ Debug + Display {
     fn get_node_mut(&mut self, id: &Self::ID) -> Option<&mut Node<Self::ID, Self::Value>>;
 
     fn add_node_with(&mut self, id: Self::ID, value: Self::Value) -> GraphResult;
+
+
     fn contains_node(&self, id: &Self::ID) -> bool;
 
 
@@ -72,8 +75,49 @@ pub trait GraphReverse<ID, W, T, G = Self>
 
 }
 
+pub trait GraphTools<ID> : Graph<ID=ID> where
+    ID : PrimInt + Zero + One + Add + Eq + FromPrimitive
+{
+    fn add_node_auto_id(&mut self, value: Self::Value) -> GraphResult<ID> {
+        if let Some(mut next_id) = ID::from_usize(self.num_nodes()) {
+            while self.get_node(&next_id).is_some() {
+                next_id = next_id + ID::one();
+            }
+
+            self.add_node_with(next_id.clone(), value)?;
+            Ok(next_id)
+        } else {
+            panic!("Can't create anymore nodes")
+        }
+    }
+
+    fn add_nodes_auto_id(&mut self, values: Vec<Self::Value>) -> GraphResult<Vec<ID>> {
+        if let Some(mut next_id) = ID::from_usize(self.num_nodes()) {
+            let mut output = Vec::with_capacity(values.len());
+            for val in values {
+                while self.get_node(&next_id).is_some() {
+                    next_id = next_id + ID::one();
+                }
+
+                self.add_node_with(next_id.clone(), val)?;
+                output.push(next_id.clone());
+                next_id = next_id + ID::one();
+            }
+
+            Ok(output)
+        } else {
+            panic!("Can't create anymore nodes")
+        }
+    }
 
 
+}
+
+impl <ID, G> GraphTools<ID> for G
+    where G : Graph<ID=ID>,
+          ID : PrimInt + Zero + One + Add + Eq + FromPrimitive {
+
+}
 
 
 
@@ -86,5 +130,5 @@ pub enum GraphError {
     EdgeAlreadyExists,
 }
 
-pub type GraphResult = std::result::Result<(), GraphError>;
+pub type GraphResult<T=()> = std::result::Result<T, GraphError>;
 
